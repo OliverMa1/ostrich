@@ -41,6 +41,8 @@ import ostrich.automata.{AtomicStateAutomaton, AutomataUtils, Automaton, BricsAu
 import ostrich.cesolver.automata.CostEnrichedAutomatonBase
 import ostrich.preop.{ConcatPreOp, PreOp}
 
+import java.util.WeakHashMap
+
 import scala.collection.breakOut
 import scala.collection.mutable.{ArrayBuffer, HashMap => MHashMap, MultiMap => MMultiMap, Set => MSet}
 import ap.basetypes.IdealInt
@@ -70,6 +72,17 @@ trait PropagationSaturationUtils {
   )
 
   val autDatabase = theory.autDatabase
+
+  private case class GoalInfo(
+    funApps : Seq[FunAppTuple],
+    funAppsByFormula : Map[Atom, FunAppTuple],
+    initialConstraints : Map[Term, Seq[Atom]]
+  )
+
+  // Re-derive function applications and initial regex constraints at most
+  // once per goal.
+  private val goalInfoCache = new WeakHashMap[Goal, GoalInfo]
+  private val goalInfoCacheLock = new Object
 
   def getAge(variable : Term, regex : Term, goal : Goal) : Int = {
     for (a <- goal.facts.predConj.positiveLitsWithPred(agePred)){
@@ -144,6 +157,56 @@ trait PropagationSaturationUtils {
 
   type FunAppTuple = (PreOp, Seq[Option[Term]], Term, Atom)
 
+  private def computeGoalInfo(goal : Goal) : GoalInfo = {
+    val atoms = goal.facts.predConj
+    val stringFunctionTranslator =
+      new OstrichStringFunctionTranslator(theory, goal.facts)
+
+    val funApps = new ArrayBuffer[FunAppTuple]
+    val termConstraints = new MHashMap[Term, MSet[Atom]]
+      with MMultiMap[Term, Atom]
+
+    for (a <- atoms.positiveLits) {
+      getFunApp(stringFunctionTranslator, a).foreach(funApps += _)
+
+      a.pred match {
+        case `str_in_re_id` =>
+          termConstraints.addBinding(a(0), a)
+        case FunPred(`str_len`) if a(1).isZero =>
+          termConstraints.addBinding(a(0), a)
+        case _ =>
+      }
+    }
+
+    val initialConstraints =
+      termConstraints.map({ case (t, as) =>
+        (t, as.toSeq.sorted(goal.order.atomOrdering))
+      }).toMap
+
+    val funAppsSeq = funApps.toSeq
+
+    GoalInfo(funAppsSeq,
+             funAppsSeq.iterator.map(app => app._4 -> app).toMap,
+             initialConstraints)
+  }
+
+  private def getGoalInfo(goal : Goal) : GoalInfo = {
+    val cached =
+      goalInfoCacheLock.synchronized {
+        Option(goalInfoCache.get(goal))
+      }
+
+    cached getOrElse {
+      val computed = computeGoalInfo(goal)
+      goalInfoCacheLock.synchronized {
+        Option(goalInfoCache.get(goal)) getOrElse {
+          goalInfoCache.put(goal, computed)
+          computed
+        }
+      }
+    }
+  }
+
   /**
    * The function applications that appear in the goal
    *
@@ -160,21 +223,7 @@ trait PropagationSaturationUtils {
   def getFunApps(
     goal : Goal
   ) : Seq[FunAppTuple] = {
-    val atoms = goal.facts.predConj
-    val stringFunctionTranslator =
-        new OstrichStringFunctionTranslator(theory, goal.facts)
-
-    // Collect a bunch of data. Always keep original formula for axiom
-    // construction when returning propagation results.
-    //
-    // funApps -- each function application:
-    //  (operation, arguments, result term, original formula containing app)
-    val funApps = new ArrayBuffer[(PreOp, Seq[Option[Term]], Term, Atom)]
-
-    for (a <- atoms.positiveLits)
-      getFunApp(stringFunctionTranslator, a).foreach(funApps += _)
-
-    funApps.toSeq
+    getGoalInfo(goal).funApps
   }
 
   /**
@@ -229,23 +278,11 @@ trait PropagationSaturationUtils {
    * 0 len. Atoms will be sorted by goal order.
    */
   def getInitialConstraints(goal: Goal) : Map[Term, Seq[Atom]] = {
-    val atoms = goal.facts.predConj
-    val stringFunctionTranslator =
-        new OstrichStringFunctionTranslator(theory, goal.facts)
+    getGoalInfo(goal).initialConstraints
+  }
 
-    val termConstraints = new MHashMap[Term, MSet[Atom]]
-      with MMultiMap[Term, Atom]
-
-    for (a <- atoms.positiveLits) a.pred match {
-      case `str_in_re_id` => termConstraints.addBinding(a(0), a)
-      case FunPred(`str_len`) if a(1).isZero
-        => termConstraints.addBinding(a(0), a)
-      case _ => // nothing
-    }
-
-    termConstraints.map({ case (t, as) =>
-      (t, as.toSeq.sorted(goal.order.atomOrdering))
-    }).toMap
+  def getGoalFunApp(goal : Goal, formula : Atom) : Option[FunAppTuple] = {
+    getGoalInfo(goal).funAppsByFormula.get(formula)
   }
 
   /**
