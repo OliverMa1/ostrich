@@ -37,9 +37,9 @@ import ap.terfor.conjunctions.Conjunction
 import ap.terfor.preds.{Atom, Predicate}
 import ap.terfor.{TerForConvenience, Term, TermOrder}
 import ap.theories.{SaturationProcedure, Theory}
-import ostrich.OstrichStringFunctionTranslator
 import ostrich.OstrichStringTheory
-import scala.collection.mutable.{HashMap => MHashMap}
+
+import java.util.WeakHashMap
 /**
  * A SaturationProcedure for backwards propagation.
  *
@@ -61,7 +61,9 @@ class BackwardsSaturation(
   with PropagationSaturationUtils {
   import theory.{ str_len, str_in_re_id, FunPred,strDatabase, str_++ }
 
-  private val atomToFunApp = new MHashMap[Atom, FunAppTuple]()
+  private val applicationPointCache =
+    new WeakHashMap[Goal, IndexedSeq[ApplicationPoint]]
+  private val applicationPointCacheLock = new Object
 
   /**
    * (funApp, argConstraint)
@@ -70,11 +72,48 @@ class BackwardsSaturation(
    */
   type ApplicationPoint = (Atom, Option[Atom])
 
+  private def computeApplicationPoints(
+    goal : Goal,
+    termConstraintMap : Map[Term, Seq[Atom]]
+  ) : IndexedSeq[ApplicationPoint] = {
+    val funApps = getFunApps(goal)
+
+    val applicationPoints = for {
+      (_, _, res, formula) <- funApps
+      regex <- termConstraintMap.get(res)
+        .map(_.map(Some(_)))
+        .getOrElse(Seq(None))
+      if (formula.pred match {
+        case FunPred(`str_++`) =>
+          regex.isDefined | strDatabase.isConcrete(res)
+        case _ =>
+          true
+      })
+    } yield (formula, regex)
+
+    applicationPoints.toIndexedSeq
+  }
+
+  private def cachedApplicationPoints(goal : Goal) : IndexedSeq[ApplicationPoint] = {
+    val cached =
+      applicationPointCacheLock.synchronized {
+        Option(applicationPointCache.get(goal))
+      }
+
+    cached getOrElse {
+      val computed = computeApplicationPoints(goal, getInitialConstraints(goal))
+      applicationPointCacheLock.synchronized {
+        Option(applicationPointCache.get(goal)) getOrElse {
+          applicationPointCache.put(goal, computed)
+          computed
+        }
+      }
+    }
+  }
+
   override def extractApplicationPoints(
     goal : Goal
-  ) : Iterator[ApplicationPoint] = extractApplicationPoints(
-    goal, getInitialConstraints(goal)
-  )
+  ) : Iterator[ApplicationPoint] = cachedApplicationPoints(goal).iterator
   def computePenalty(predicate: Predicate): Int = predicate match {
     case FunPred(theory.str_++) => 100
     // Add more cases for other predicates and their respective penalties
@@ -95,7 +134,7 @@ class BackwardsSaturation(
     p._2 match {
       // None means arg in Sigma* or constant string
       case None =>
-        if (strDatabase.isConcrete(atomToFunApp(p._1)._3)){
+        if (getGoalFunApp(goal, p._1).exists(app => strDatabase.isConcrete(app._3))){
           0
         }
         else{
@@ -121,15 +160,12 @@ class BackwardsSaturation(
   ) : Seq[Plugin.Action] = {
     val termConstraintMap = getInitialConstraints(goal)
     // return empty if appPoint no longer relevant
-    if (!extractApplicationPoints(goal, termConstraintMap).contains(appPoint))
+    if (!cachedApplicationPoints(goal).contains(appPoint))
       return List()
-
-    val stringFunctionTranslator =
-        new OstrichStringFunctionTranslator(theory, goal.facts)
 
     val (funApp, argCon) = appPoint
     val (op, args, res, formula)
-      = getFunApp(stringFunctionTranslator, funApp) match {
+      = getGoalFunApp(goal, funApp) match {
           case Some(app) => app
           case None =>
             throw new Exception(
@@ -193,26 +229,7 @@ class BackwardsSaturation(
   private def extractApplicationPoints(
     goal : Goal, termConstraintMap : Map[Term, Seq[Atom]]
   ) : Iterator[ApplicationPoint] = {
-    val funApps = getFunApps(goal)
-
-    val applicationPoints = for {
-      (op, args, res, formula) <- funApps
-      regex <- termConstraintMap.get(res)
-        .map(_.map(Some(_)))
-        .getOrElse(Seq(None))
-      if (formula.pred match {
-      case FunPred(`str_++`) => {
-        regex.isDefined | strDatabase.isConcrete(res)
-      } // Skip if pred matches `str.++` and regex is None
-      case _ => true // Include all other cases
-    })
-    } yield {
-      atomToFunApp.put(formula, (op, args, res, formula))
-      (formula, regex)
-    }
-
-
-    applicationPoints.toIterator
+    computeApplicationPoints(goal, termConstraintMap).iterator
   }
 
   override def isSoundForSat(
