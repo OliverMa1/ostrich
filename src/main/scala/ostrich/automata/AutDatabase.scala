@@ -332,28 +332,36 @@ class AutDatabase(theory : OstrichStringTheory,
    * Check whether the automata with the given ids have empty intersection.
    * If no automata with the given ids exist in the database, the method
    * will fail with an exception.
-   * 
-   * TODO: move the expensive step out of the synchronized block?
    */
-  def emptyIntersection(ids : Set[Int]) : Boolean =
+  def emptyIntersection(ids : Set[Int]) : Boolean = {
+    val auts =
+      synchronized {
+        if (nonEmptyIntersections.containsSuperset(ids))
+          return false
+        if (emptyIntersections.containsSubset(ids))
+          return true
+
+        ids.toSeq.sorted.map(id => id2Aut.get(id).get)
+      }
+
+    val consistent = AutomataUtils.areConsistentAutomata(auts)
+
     synchronized {
       if (nonEmptyIntersections.containsSuperset(ids)) {
         false
       } else if (emptyIntersections.containsSubset(ids)) {
         true
+      } else if (consistent) {
+        nonEmptyIntersections += ids
+//        printSMTLIB(ids, true)
+        false
       } else {
-        val auts = ids.toSeq.sorted.map(id => id2Automaton(id).get)
-        if (AutomataUtils.areConsistentAutomata(auts)) {
-          nonEmptyIntersections += ids
-//          printSMTLIB(ids, true)
-          false
-        } else {
-          emptyIntersections += ids
-//          printSMTLIB(ids, false)
-          true
-        }
+        emptyIntersections += ids
+//        printSMTLIB(ids, false)
+        true
       }
     }
+  }
 
 /*
   private var fileCnt : Int = 0
