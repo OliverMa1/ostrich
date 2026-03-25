@@ -37,10 +37,10 @@ import ap.terfor.{TerForConvenience, TermOrder}
 import ap.terfor.conjunctions.Conjunction
 import ap.terfor.preds.{Atom, Predicate}
 import ap.theories.{SaturationProcedure, Theory}
-import ap.util.Combinatorics.cartesianProduct
 import ostrich.OstrichStringTheory
 
 import java.util.WeakHashMap
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * A SaturationProcedure for forwards propagation.
@@ -81,39 +81,75 @@ class ForwardsSaturation(
    */
   type ApplicationPoint = (Atom, Seq[Seq[Atom]])
 
+  private def shouldSkipApplicationPoint(
+    formula : Atom,
+    args : Seq[Option[ap.terfor.Term]],
+    argCons : Seq[Seq[Atom]]
+  ) : Boolean = {
+    formula.pred match {
+      case FunPred(`str_++`) if argCons.forall(_.isEmpty) =>
+        !args.exists(_.forall(strDatabase.isConcrete))
+      case _ =>
+        false
+    }
+  }
+
+  private def appendApplicationPoints(
+    formula : Atom,
+    args : Seq[Option[ap.terfor.Term]],
+    argConSeqs : Seq[Seq[Atom]],
+    builder : ArrayBuffer[ApplicationPoint]
+  ) : Unit = {
+    val current = Array.fill[Seq[Atom]](argConSeqs.size)(Seq.empty)
+
+    def build(index : Int) : Unit = {
+      if (index >= argConSeqs.size) {
+        val argCons = current.clone.toIndexedSeq
+        if (!shouldSkipApplicationPoint(formula, args, argCons))
+          builder += ((formula, argCons))
+      } else {
+        val cons = argConSeqs(index)
+        if (cons.isEmpty) {
+          current(index) = Seq.empty
+          build(index + 1)
+        } else {
+          for (constraint <- cons) {
+            current(index) = Seq(constraint)
+            build(index + 1)
+          }
+        }
+      }
+    }
+
+    build(0)
+
+    if (argConSeqs.exists(_.size > 1) &&
+        !shouldSkipApplicationPoint(formula, args, argConSeqs))
+      builder += ((formula, argConSeqs))
+  }
+
   private def computeApplicationPoints(
     goal : Goal
   ) : IndexedSeq[ApplicationPoint] = {
     val funApps = getFunApps(goal)
     val termConstraintMap = getInitialConstraints(goal)
+    val applicationPoints = new ArrayBuffer[ApplicationPoint]
 
-    val applicationPoints = for {
-      (_, args, res, formula) <- funApps
+    for ((_, args, res, formula) <- funApps) {
       // functions with only concrete args will be handled forwards by
       // OstrichReducer
       if (!args.forall(_.forall(strDatabase.isConcrete)) ||
-            strDatabase.isConcrete(res))
-      argConSeqs = args.map({
-        case None => Seq()
-        case Some(a) =>
-          termConstraintMap.get(a)
-            .map(_.filter(isNotNonZeroLenConstraint).toSeq)
-            .getOrElse(Seq())
-      })
-      argCons <- cartesianProduct(argConSeqs.map(cons =>
-        if (cons.isEmpty)
-          Seq(Seq())
-        else
-          cons.map(Seq(_))
-      ).toList).toSeq ++
-      (if (argConSeqs.exists(_.size > 1)) Seq(argConSeqs) else Seq())
-      if !(formula.pred match {
-        case FunPred(`str_++`) if argCons.flatten.isEmpty =>
-          !args.exists(_.forall(strDatabase.isConcrete))
-        case _ =>
-          false
-      })
-    } yield (formula, argCons)
+            strDatabase.isConcrete(res)) {
+        val argConSeqs = args.map({
+          case None => Seq()
+          case Some(a) =>
+            termConstraintMap.get(a)
+              .map(_.filter(isNotNonZeroLenConstraint).toSeq)
+              .getOrElse(Seq())
+        })
+        appendApplicationPoints(formula, args, argConSeqs, applicationPoints)
+      }
+    }
 
     applicationPoints.toIndexedSeq
   }
