@@ -90,7 +90,7 @@ class BackwardsSaturation(
         .getOrElse(Seq(None))
       if (formula.pred match {
         case FunPred(`str_++`) =>
-          regex.isDefined | strDatabase.isConcrete(res)
+          regex.isDefined || strDatabase.isConcrete(res)
         case _ =>
           true
       })

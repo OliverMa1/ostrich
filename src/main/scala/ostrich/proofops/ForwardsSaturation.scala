@@ -91,7 +91,7 @@ class ForwardsSaturation(
       (_, args, res, formula) <- funApps
       // functions with only concrete args will be handled forwards by
       // OstrichReducer
-      if (!args.forall(_.forall(strDatabase.isConcrete)) |
+      if (!args.forall(_.forall(strDatabase.isConcrete)) ||
             strDatabase.isConcrete(res))
       argConSeqs = args.map({
         case None => Seq()

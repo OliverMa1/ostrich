@@ -35,7 +35,7 @@ package ostrich.automata
 import scala.collection.mutable.{HashSet => MHashSet,
                                  LinkedHashSet => MLinkedHashSet,
                                  HashMap => MHashMap,
-                                 Stack => MStack,
+                                 ArrayStack => MStack,
                                  MultiMap => MMultiMap,
                                  Set => MSet}
 
@@ -322,8 +322,8 @@ class BricsTransducer(val initialState : BricsAutomaton#State,
                 t : Either[TTransition, TETransition],
                 as : aut.State,
                 m : Mode) {
-      if (!seenlist.contains((ps, ts, t, as, m))) {
-        seenlist += ((ps, ts, t, as, m))
+      val workItem = (ps, ts, t, as, m)
+      if (seenlist.add(workItem)) {
         worklist.push((ps, ts, t, as, m))
       }
     }
@@ -648,7 +648,8 @@ class BricsTransducer(val initialState : BricsAutomaton#State,
           val pnext = pos + 1
           val snext = dest(t)
           val lbl = label(t)
-          if (LabelOps.labelContains(a, lbl) && !seenlist.contains((snext, pnext))) {
+          val nextState = (snext, pnext)
+          if (LabelOps.labelContains(a, lbl) && seenlist.add(nextState)) {
             val tOp = operation(t)
             val opOut = tOp.op match {
               case NOP => ""
@@ -662,11 +663,11 @@ class BricsTransducer(val initialState : BricsAutomaton#State,
           }
         }
       }
-
       for (ts <- eTrans.get(s); t <- ts) {
         val pnext = pos
         val snext = dest(t)
-        if (!seenlist.contains((snext, pnext))) {
+        val nextState = (snext, pnext)
+        if (seenlist.add(nextState)) {
           val tOp = operation(t)
           val opOut = tOp.op match {
             case NOP => ""

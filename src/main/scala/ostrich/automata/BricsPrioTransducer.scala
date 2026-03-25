@@ -35,7 +35,7 @@ package ostrich.automata
 import scala.collection.mutable.{HashSet => MHashSet,
                                  LinkedHashSet => MLinkedHashSet,
                                  HashMap => MHashMap,
-                                 Stack => MStack,
+                                 ArrayStack => MStack,
                                  MultiMap => MMultiMap,
                                  Set => MSet}
 
