@@ -63,8 +63,13 @@ class ForwardsSaturation(
   with PropagationSaturationUtils {
   import theory.{ str_len, str_in_re_id, FunPred, strDatabase, str_++}
 
+  private case class CachedApplicationPoints(
+    points : IndexedSeq[ApplicationPoint],
+    pointSet : Set[ApplicationPoint]
+  )
+
   private val applicationPointCache =
-    new WeakHashMap[Goal, IndexedSeq[ApplicationPoint]]
+    new WeakHashMap[Goal, CachedApplicationPoints]
   private val applicationPointCacheLock = new Object
 
   /**
@@ -113,14 +118,15 @@ class ForwardsSaturation(
     applicationPoints.toIndexedSeq
   }
 
-  private def cachedApplicationPoints(goal : Goal) : IndexedSeq[ApplicationPoint] = {
+  private def cachedApplicationPoints(goal : Goal) : CachedApplicationPoints = {
     val cached =
       applicationPointCacheLock.synchronized {
         Option(applicationPointCache.get(goal))
       }
 
     cached getOrElse {
-      val computed = computeApplicationPoints(goal)
+      val computedPoints = computeApplicationPoints(goal)
+      val computed = CachedApplicationPoints(computedPoints, computedPoints.toSet)
       applicationPointCacheLock.synchronized {
         Option(applicationPointCache.get(goal)) getOrElse {
           applicationPointCache.put(goal, computed)
@@ -133,7 +139,7 @@ class ForwardsSaturation(
   override def extractApplicationPoints(
     goal : Goal
   ) : Iterator[ApplicationPoint] = {
-    cachedApplicationPoints(goal).iterator
+    cachedApplicationPoints(goal).points.iterator
   }
 
   def computePenalty(predicate: Predicate): Int = predicate match {
@@ -177,7 +183,7 @@ class ForwardsSaturation(
     goal : Goal, appPoint : ApplicationPoint
   ) : Seq[Plugin.Action] = {
     // return empty if appPoint no longer relevant
-    if (!cachedApplicationPoints(goal).contains(appPoint))
+    if (!cachedApplicationPoints(goal).pointSet.contains(appPoint))
       return List()
 
     val (funApp, argCons) = appPoint

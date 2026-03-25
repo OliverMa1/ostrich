@@ -847,8 +847,8 @@ class BricsTransducerBuilder
     minimize()
     // TODO: restrict to live reachable states
     new BricsTransducer(initialState,
-                        lblTrans.toMap.mapValues(_.toSet),
-                        eTrans.toMap.mapValues(_.toSet),
+                        lblTrans.iterator.map { case (s, ts) => s -> ts.toSet }.toMap,
+                        eTrans.iterator.map { case (s, ts) => s -> ts.toSet }.toMap,
                         acceptingStates.toSet)
   }
 
@@ -905,4 +905,3 @@ class BricsTransducerBuilder
     eTrans.foreach({ case (k, v) => v.retain(t => bwdReach.contains(edest(t))) })
   }
 }
-

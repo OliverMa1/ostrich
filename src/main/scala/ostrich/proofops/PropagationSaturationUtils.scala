@@ -76,7 +76,8 @@ trait PropagationSaturationUtils {
   private case class GoalInfo(
     funApps : Seq[FunAppTuple],
     funAppsByFormula : Map[Atom, FunAppTuple],
-    initialConstraints : Map[Term, Seq[Atom]]
+    initialConstraints : Map[Term, Seq[Atom]],
+    ages : Map[(Term, Term), Int]
   )
 
   // Re-derive function applications and initial regex constraints at most
@@ -85,13 +86,7 @@ trait PropagationSaturationUtils {
   private val goalInfoCacheLock = new Object
 
   def getAge(variable : Term, regex : Term, goal : Goal) : Int = {
-    for (a <- goal.facts.predConj.positiveLitsWithPred(agePred)){
-      if (variable == a(0) && regex == a(1)){
-        //return innerhalb von for ist langsam
-        return a(2).head._1.intValueSafe
-      }
-    }
-    0
+    getGoalInfo(goal).ages.getOrElse((variable, regex), 0)
   }
 
   def buildAge(variable : Term, autId : Int, age : Int, goal : Goal) : Atom = {
@@ -165,6 +160,7 @@ trait PropagationSaturationUtils {
     val funApps = new ArrayBuffer[FunAppTuple]
     val termConstraints = new MHashMap[Term, MSet[Atom]]
       with MMultiMap[Term, Atom]
+    val ages = new MHashMap[(Term, Term), Int]
 
     for (a <- atoms.positiveLits) {
       getFunApp(stringFunctionTranslator, a).foreach(funApps += _)
@@ -174,6 +170,8 @@ trait PropagationSaturationUtils {
           termConstraints.addBinding(a(0), a)
         case FunPred(`str_len`) if a(1).isZero =>
           termConstraints.addBinding(a(0), a)
+        case `agePred` =>
+          ages.getOrElseUpdate((a(0), a(1)), a(2).head._1.intValueSafe)
         case _ =>
       }
     }
@@ -187,7 +185,8 @@ trait PropagationSaturationUtils {
 
     GoalInfo(funAppsSeq,
              funAppsSeq.iterator.map(app => app._4 -> app).toMap,
-             initialConstraints)
+             initialConstraints,
+             ages.toMap)
   }
 
   private def getGoalInfo(goal : Goal) : GoalInfo = {

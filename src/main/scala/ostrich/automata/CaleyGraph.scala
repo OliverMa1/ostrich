@@ -181,7 +181,9 @@ object CaleyGraph {
       boxes(i2).addEdge(q1, q2)
 
     // reverse map
-    boxes.groupBy(_._2).mapValues(_.keys)
+    boxes.groupBy(_._2).iterator.map { case (box, labels) =>
+      box -> labels.keys
+    }.toMap
   }
 
   /**
