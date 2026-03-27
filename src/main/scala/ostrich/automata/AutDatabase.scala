@@ -328,6 +328,14 @@ class AutDatabase(theory : OstrichStringTheory,
                         aut2 : NamedAutomaton) : Boolean =
     emptyIntersection(Set(namedAutToId(aut1), namedAutToId(aut2)))
 
+  private def cachedEmptyIntersection(ids : Set[Int]) : Option[Boolean] =
+    if (nonEmptyIntersections.containsSuperset(ids))
+      Some(false)
+    else if (emptyIntersections.containsSubset(ids))
+      Some(true)
+    else
+      None
+
   /**
    * Check whether the automata with the given ids have empty intersection.
    * If no automata with the given ids exist in the database, the method
@@ -336,29 +344,25 @@ class AutDatabase(theory : OstrichStringTheory,
   def emptyIntersection(ids : Set[Int]) : Boolean = {
     val auts =
       synchronized {
-        if (nonEmptyIntersections.containsSuperset(ids))
-          return false
-        if (emptyIntersections.containsSubset(ids))
-          return true
-
-        ids.toSeq.sorted.map(id => id2Aut.get(id).get)
+        cachedEmptyIntersection(ids) match {
+          case Some(result) => return result
+          case None => ids.toSeq.sorted.map(id => id2Aut.get(id).get)
+        }
       }
 
     val consistent = AutomataUtils.areConsistentAutomata(auts)
 
     synchronized {
-      if (nonEmptyIntersections.containsSuperset(ids)) {
-        false
-      } else if (emptyIntersections.containsSubset(ids)) {
-        true
-      } else if (consistent) {
-        nonEmptyIntersections += ids
+      cachedEmptyIntersection(ids).getOrElse {
+        if (consistent) {
+          nonEmptyIntersections += ids
 //        printSMTLIB(ids, true)
-        false
-      } else {
-        emptyIntersections += ids
+          false
+        } else {
+          emptyIntersections += ids
 //        printSMTLIB(ids, false)
-        true
+          true
+        }
       }
     }
   }
