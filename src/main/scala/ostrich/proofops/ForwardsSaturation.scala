@@ -39,7 +39,6 @@ import ap.terfor.preds.{Atom, Predicate}
 import ap.theories.{SaturationProcedure, Theory}
 import ostrich.OstrichStringTheory
 
-import java.util.WeakHashMap
 import scala.collection.mutable.ArrayBuffer
 
 /**
@@ -69,7 +68,7 @@ class ForwardsSaturation(
   )
 
   private val applicationPointCache =
-    new WeakHashMap[Goal, CachedApplicationPoints]
+    new LruCache[PropagationCacheKey, CachedApplicationPoints](CacheSize)
   private val applicationPointCacheLock = new Object
 
   /**
@@ -155,20 +154,13 @@ class ForwardsSaturation(
   }
 
   private def cachedApplicationPoints(goal : Goal) : CachedApplicationPoints = {
-    val cached =
-      applicationPointCacheLock.synchronized {
-        Option(applicationPointCache.get(goal))
-      }
-
-    cached getOrElse {
+    cachedValue(
+      applicationPointCache,
+      applicationPointCacheLock,
+      propagationCacheKey(goal)
+    ) {
       val computedPoints = computeApplicationPoints(goal)
-      val computed = CachedApplicationPoints(computedPoints, computedPoints.toSet)
-      applicationPointCacheLock.synchronized {
-        Option(applicationPointCache.get(goal)) getOrElse {
-          applicationPointCache.put(goal, computed)
-          computed
-        }
-      }
+      CachedApplicationPoints(computedPoints, computedPoints.toSet)
     }
   }
 

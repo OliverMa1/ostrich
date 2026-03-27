@@ -41,7 +41,7 @@ import ostrich.automata.{AtomicStateAutomaton, AutomataUtils, Automaton, BricsAu
 import ostrich.cesolver.automata.CostEnrichedAutomatonBase
 import ostrich.preop.{ConcatPreOp, PreOp}
 
-import java.util.WeakHashMap
+import java.util.{LinkedHashMap, Map => JMap}
 
 import scala.collection.breakOut
 import scala.collection.mutable.{ArrayBuffer, HashMap => MHashMap, MultiMap => MMultiMap, Set => MSet}
@@ -73,20 +73,81 @@ trait PropagationSaturationUtils {
 
   val autDatabase = theory.autDatabase
 
-  private case class GoalInfo(
-    funApps : Seq[FunAppTuple],
-    funAppsByFormula : Map[Atom, FunAppTuple],
-    initialConstraints : Map[Term, Seq[Atom]],
-    ages : Map[(Term, Term), Int]
+  protected final case class PropagationCacheKey(
+    funAppAtoms : Vector[Atom],
+    initialConstraintAtoms : Vector[Atom]
   )
 
-  // Re-derive function applications and initial regex constraints at most
-  // once per goal.
-  private val goalInfoCache = new WeakHashMap[Goal, GoalInfo]
-  private val goalInfoCacheLock = new Object
+  protected final val CacheSize = 128
+
+  protected final class LruCache[K, V](maxEntries : Int)
+      extends LinkedHashMap[K, V](maxEntries + 1, 0.75f, true) {
+    override def removeEldestEntry(eldest : JMap.Entry[K, V]) : Boolean =
+      size > maxEntries
+  }
+
+  protected final def cachedValue[K, V](
+    cache : LruCache[K, V],
+    lock : AnyRef,
+    key : K
+  )(compute : => V) : V = {
+    val cached =
+      lock.synchronized {
+        Option(cache.get(key))
+      }
+
+    cached getOrElse {
+      val computed = compute
+      lock.synchronized {
+        Option(cache.get(key)) getOrElse {
+          cache.put(key, computed)
+          computed
+        }
+      }
+    }
+  }
+
+  private def isInitialConstraint(a : Atom) : Boolean = a.pred match {
+    case `str_in_re_id` => true
+    case FunPred(`str_len`) if a(1).isZero => true
+    case _ => false
+  }
+
+  protected final def propagationCacheKey(goal : Goal) : PropagationCacheKey = {
+    val stringFunctionTranslator =
+      new OstrichStringFunctionTranslator(theory, goal.facts)
+    val funAppAtoms = new ArrayBuffer[Atom]
+    val initialConstraintAtoms = new ArrayBuffer[Atom]
+
+    for (a <- goal.facts.predConj.positiveLits) {
+      if (getFunApp(stringFunctionTranslator, a).isDefined)
+        funAppAtoms += a
+      if (isInitialConstraint(a))
+        initialConstraintAtoms += a
+    }
+
+    PropagationCacheKey(funAppAtoms.toVector, initialConstraintAtoms.toVector)
+  }
+
+  private def ageCacheKey(goal : Goal) : Vector[Atom] =
+    goal.facts.predConj.positiveLitsWithPred(agePred).toVector
+
+  private case class PropagationInfo(
+    funApps : Seq[FunAppTuple],
+    funAppsByFormula : Map[Atom, FunAppTuple],
+    initialConstraints : Map[Term, Seq[Atom]]
+  )
+
+  private val propagationInfoCache =
+    new LruCache[PropagationCacheKey, PropagationInfo](CacheSize)
+  private val propagationInfoCacheLock = new Object
+
+  private val ageCache =
+    new LruCache[Vector[Atom], Map[(Term, Term), Int]](CacheSize)
+  private val ageCacheLock = new Object
 
   def getAge(variable : Term, regex : Term, goal : Goal) : Int = {
-    getGoalInfo(goal).ages.getOrElse((variable, regex), 0)
+    getAges(goal).getOrElse((variable, regex), 0)
   }
 
   def buildAge(variable : Term, autId : Int, age : Int, goal : Goal) : Atom = {
@@ -152,26 +213,26 @@ trait PropagationSaturationUtils {
 
   type FunAppTuple = (PreOp, Seq[Option[Term]], Term, Atom)
 
-  private def computeGoalInfo(goal : Goal) : GoalInfo = {
-    val atoms = goal.facts.predConj
+  private def computePropagationInfo(
+    goal : Goal,
+    key : PropagationCacheKey
+  ) : PropagationInfo = {
     val stringFunctionTranslator =
       new OstrichStringFunctionTranslator(theory, goal.facts)
 
     val funApps = new ArrayBuffer[FunAppTuple]
     val termConstraints = new MHashMap[Term, MSet[Atom]]
       with MMultiMap[Term, Atom]
-    val ages = new MHashMap[(Term, Term), Int]
 
-    for (a <- atoms.positiveLits) {
+    for (a <- key.funAppAtoms)
       getFunApp(stringFunctionTranslator, a).foreach(funApps += _)
 
+    for (a <- key.initialConstraintAtoms) {
       a.pred match {
         case `str_in_re_id` =>
           termConstraints.addBinding(a(0), a)
         case FunPred(`str_len`) if a(1).isZero =>
           termConstraints.addBinding(a(0), a)
-        case `agePred` =>
-          ages.getOrElseUpdate((a(0), a(1)), a(2).head._1.intValueSafe)
         case _ =>
       }
     }
@@ -183,28 +244,32 @@ trait PropagationSaturationUtils {
 
     val funAppsSeq = funApps.toSeq
 
-    GoalInfo(funAppsSeq,
-             funAppsSeq.iterator.map(app => app._4 -> app).toMap,
-             initialConstraints,
-             ages.toMap)
+    PropagationInfo(funAppsSeq,
+                    funAppsSeq.iterator.map(app => app._4 -> app).toMap,
+                    initialConstraints)
   }
 
-  private def getGoalInfo(goal : Goal) : GoalInfo = {
-    val cached =
-      goalInfoCacheLock.synchronized {
-        Option(goalInfoCache.get(goal))
-      }
+  private def getPropagationInfo(goal : Goal) : PropagationInfo = {
+    val key = propagationCacheKey(goal)
 
-    cached getOrElse {
-      val computed = computeGoalInfo(goal)
-      goalInfoCacheLock.synchronized {
-        Option(goalInfoCache.get(goal)) getOrElse {
-          goalInfoCache.put(goal, computed)
-          computed
-        }
-      }
+    cachedValue(
+      propagationInfoCache,
+      propagationInfoCacheLock,
+      key
+    ) {
+      computePropagationInfo(goal, key)
     }
   }
+
+  private def getAges(goal : Goal) : Map[(Term, Term), Int] =
+    cachedValue(ageCache, ageCacheLock, ageCacheKey(goal)) {
+      val ages = new MHashMap[(Term, Term), Int]
+
+      for (a <- goal.facts.predConj.positiveLitsWithPred(agePred))
+        ages.getOrElseUpdate((a(0), a(1)), a(2).head._1.intValueSafe)
+
+      ages.toMap
+    }
 
   /**
    * The function applications that appear in the goal
@@ -222,7 +287,7 @@ trait PropagationSaturationUtils {
   def getFunApps(
     goal : Goal
   ) : Seq[FunAppTuple] = {
-    getGoalInfo(goal).funApps
+    getPropagationInfo(goal).funApps
   }
 
   /**
@@ -277,11 +342,11 @@ trait PropagationSaturationUtils {
    * 0 len. Atoms will be sorted by goal order.
    */
   def getInitialConstraints(goal: Goal) : Map[Term, Seq[Atom]] = {
-    getGoalInfo(goal).initialConstraints
+    getPropagationInfo(goal).initialConstraints
   }
 
   def getGoalFunApp(goal : Goal, formula : Atom) : Option[FunAppTuple] = {
-    getGoalInfo(goal).funAppsByFormula.get(formula)
+    getPropagationInfo(goal).funAppsByFormula.get(formula)
   }
 
   /**

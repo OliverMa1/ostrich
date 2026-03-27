@@ -39,7 +39,6 @@ import ap.terfor.{TerForConvenience, Term, TermOrder}
 import ap.theories.{SaturationProcedure, Theory}
 import ostrich.OstrichStringTheory
 
-import java.util.WeakHashMap
 /**
  * A SaturationProcedure for backwards propagation.
  *
@@ -67,7 +66,7 @@ class BackwardsSaturation(
   )
 
   private val applicationPointCache =
-    new WeakHashMap[Goal, CachedApplicationPoints]
+    new LruCache[PropagationCacheKey, CachedApplicationPoints](CacheSize)
   private val applicationPointCacheLock = new Object
 
   /**
@@ -100,20 +99,13 @@ class BackwardsSaturation(
   }
 
   private def cachedApplicationPoints(goal : Goal) : CachedApplicationPoints = {
-    val cached =
-      applicationPointCacheLock.synchronized {
-        Option(applicationPointCache.get(goal))
-      }
-
-    cached getOrElse {
+    cachedValue(
+      applicationPointCache,
+      applicationPointCacheLock,
+      propagationCacheKey(goal)
+    ) {
       val computedPoints = computeApplicationPoints(goal, getInitialConstraints(goal))
-      val computed = CachedApplicationPoints(computedPoints, computedPoints.toSet)
-      applicationPointCacheLock.synchronized {
-        Option(applicationPointCache.get(goal)) getOrElse {
-          applicationPointCache.put(goal, computed)
-          computed
-        }
-      }
+      CachedApplicationPoints(computedPoints, computedPoints.toSet)
     }
   }
 
