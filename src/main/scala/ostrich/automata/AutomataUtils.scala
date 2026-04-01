@@ -49,6 +49,23 @@ object AutomataUtils {
   val MaxSimultaneousProduct = 5
 
   /**
+   * Return the shortest word <code>p</code> such that the given word can
+   * be written as <code>p^k</code> for some <code>k >= 1</code>.
+   */
+  def primitiveRoot(word : Seq[Int]) : Seq[Int] = {
+    if (word.isEmpty)
+      return word
+
+    val rootLength =
+      (1 to word.size).find(period =>
+        (word.size % period == 0) &&
+        word.indices.forall(i => word(i) == word(i % period))
+      ).getOrElse(word.size)
+
+    word.take(rootLength)
+  }
+
+  /**
    * Check whether there is some word accepted by all of the given automata.
    * The automata are required to all have the same label type (though this is
    * not checked statically)
