@@ -405,17 +405,17 @@ class OstrichStringTheory(transducers : Seq[(String, Transducer)],
           strInReTranslator.handleGoal(goal)           elseDo
           ostrichClose.handleGoal(goal)                elseDo
           intersectionRule.handleGoal(goal)            elseDo
-          periodicRewriter.handleGoal                   elseDo
           breakCyclicEquations(goal).getOrElse(List()) elseDo
           nielsenSplitter.decompSimpleEquations        elseDo
           nielsenSplitter.decompEquations              elseDo
           predToEq.reducePredicatesToEquations
 
         case Plugin.GoalState.Intermediate =>
-          if (theoryFlags.nielsenSplitter)
-            nielsenSplitter.splitEquation
-          else
-            List()
+          (if (theoryFlags.nielsenSplitter)
+             nielsenSplitter.splitEquation
+           else
+             List())                                   elseDo
+          periodicRewriter.handleGoal
 
         case Plugin.GoalState.Final =>
           predToEq.lazyEnumeration                     elseDo
