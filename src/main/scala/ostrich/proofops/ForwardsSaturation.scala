@@ -160,7 +160,10 @@ class ForwardsSaturation(
       propagationCacheKey(goal)
     ) {
       val computedPoints = computeApplicationPoints(goal)
-      CachedApplicationPoints(computedPoints, computedPoints.toSet)
+      CachedApplicationPoints(
+        computedPoints,
+        computedPoints.toSet
+      )
     }
   }
 

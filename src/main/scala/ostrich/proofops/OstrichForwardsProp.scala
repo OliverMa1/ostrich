@@ -44,7 +44,6 @@ import ap.terfor.linearcombination.LinearCombination
 import ap.terfor.preds.Atom
 import ap.terfor.{RichPredicate, Term}
 
-import scala.collection.breakOut
 import scala.collection.mutable.{ArrayBuffer, BitSet => MBitSet, HashMap => MHashMap, MultiMap => MMultiMap, Set => MSet}
 
 object OstrichForwardsProp {
@@ -354,7 +353,7 @@ class OstrichForwardsProp(goal : Goal,
     // check whether any of the terms have concrete definitions
     for (t <- allTerms) {
       for (w <- strDatabase.term2List(t)) {
-        val str : String = w.map(i => i.toChar)(breakOut)
+        val str : String = w.map(i => i.toChar).mkString
         termConstraints.addBinding(
           t, (BricsAutomaton fromString str, Conjunction.TRUE)
         )

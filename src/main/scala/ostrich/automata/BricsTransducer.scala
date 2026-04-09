@@ -331,7 +331,8 @@ class BricsTransducer(val initialState : BricsAutomaton#State,
     // Cache exact runs of fixed output words through the target automaton.
     // Pre/Post/EPost only need the reachable endpoints, not the intermediate
     // states, so we can reuse these results safely.
-    val wordReachCache = new MHashMap[(aut.State, Vector[Char]), Vector[aut.State]]
+    val wordReachCache =
+      new MHashMap[(aut.State, Vector[Char]), Vector[aut.State]]
 
     def advanceWord(as : aut.State, word : Seq[Char]) : Vector[aut.State] = {
       if (word.isEmpty) {
@@ -872,10 +873,12 @@ class BricsTransducerBuilder
   def getTransducer = {
     minimize()
     // TODO: restrict to live reachable states
-    new BricsTransducer(initialState,
-                        lblTrans.iterator.map { case (s, ts) => s -> ts.toSet }.toMap,
-                        eTrans.iterator.map { case (s, ts) => s -> ts.toSet }.toMap,
-                        acceptingStates.toSet)
+    new BricsTransducer(
+      initialState,
+      lblTrans.iterator.map { case (s, ts) => s -> ts.toSet }.toMap,
+      eTrans.iterator.map { case (s, ts) => s -> ts.toSet }.toMap,
+      acceptingStates.toSet
+    )
   }
 
   private def minimize() = {

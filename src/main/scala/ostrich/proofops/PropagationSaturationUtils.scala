@@ -37,14 +37,23 @@ import ap.terfor.{Formula, RichPredicate, TerForConvenience, Term}
 import ap.terfor.linearcombination.LinearCombination
 import ap.terfor.preds.Atom
 import ostrich._
-import ostrich.automata.{AtomicStateAutomaton, AutomataUtils, Automaton, BricsAutomaton}
+import ostrich.automata.{
+  AtomicStateAutomaton,
+  AutomataUtils,
+  Automaton,
+  BricsAutomaton
+}
 import ostrich.cesolver.automata.CostEnrichedAutomatonBase
 import ostrich.preop.{ConcatPreOp, PreOp}
 
 import java.util.{LinkedHashMap, Map => JMap}
 
-import scala.collection.breakOut
-import scala.collection.mutable.{ArrayBuffer, HashMap => MHashMap, MultiMap => MMultiMap, Set => MSet}
+import scala.collection.mutable.{
+  ArrayBuffer,
+  HashMap => MHashMap,
+  MultiMap => MMultiMap,
+  Set => MSet
+}
 import ap.basetypes.IdealInt
 
 /**
@@ -54,9 +63,11 @@ trait PropagationSaturationUtils {
   val theory : OstrichStringTheory
 
   import theory.{
-    str_len, str_in_re, str_char_count, str_in_re_id, str_to_re, str_contains, agePred,
+    str_len, str_in_re, str_char_count, str_in_re_id, str_to_re,
+    str_contains, agePred,
     re_from_str, re_from_ecma2020, re_from_ecma2020_flags,
-    re_case_insensitive, str_prefixof, str_suffixof, re_none, re_all, re_allchar,
+    re_case_insensitive, str_prefixof, str_suffixof, re_none,
+    re_all, re_allchar,
     re_charrange, re_++, re_union, re_inter, re_diff, re_*, re_*?, re_+,
     re_+?, re_opt, re_opt_?, re_comp, re_loop, re_loop_?, re_eps,
     re_capture, re_reference, re_begin_anchor, re_end_anchor, FunPred,
@@ -176,7 +187,7 @@ trait PropagationSaturationUtils {
       case None => {
         // but might have a concrete def
         strDatabase.term2List(term).map({ w =>
-          val str : String = w.map(i => i.toChar)(breakOut)
+          val str : String = w.map(i => i.toChar).mkString
           BricsAutomaton.fromString(str)
         }).getOrElse(autDatabase.anyStringAut)
       }
@@ -386,7 +397,11 @@ trait PropagationSaturationUtils {
     }
   }
 
-  private def resultTermAppearsElsewhere(term: Term, funApps: Seq[(PreOp, Seq[Option[Term]], Term, Atom)], originalElem: (PreOp, Seq[Option[Term]], Term, Atom)): Boolean = {
+  private def resultTermAppearsElsewhere(
+    term : Term,
+    funApps : Seq[FunAppTuple],
+    originalElem : FunAppTuple
+  ) : Boolean = {
     funApps.exists { case (op, args, resTerm, atom) =>
       // Check if the term appears in the arguments or as the result term,
       // excluding its original position
@@ -398,13 +413,21 @@ trait PropagationSaturationUtils {
     }
   }
 
-  // Helper function to check if any terms in the sequence of options appear elsewhere
-  private def argsAppearElsewhere(args: Seq[Option[Term]], funApps: Seq[(PreOp, Seq[Option[Term]], Term, Atom)], currentElem: (PreOp, Seq[Option[Term]], Term, Atom)): Boolean = {
-    args.flatten.exists(term => resultTermAppearsElsewhere(term, funApps, currentElem)) || currentElem._4.pred == FunPred(theory.str_replaceallre) || currentElem._4.pred == FunPred(theory.str_replaceall)
+  // Helper function to check whether any argument term appears elsewhere.
+  private def argsAppearElsewhere(
+    args : Seq[Option[Term]],
+    funApps : Seq[FunAppTuple],
+    currentElem : FunAppTuple
+  ) : Boolean = {
+    args.flatten.exists(term =>
+      resultTermAppearsElsewhere(term, funApps, currentElem)
+    ) ||
+    currentElem._4.pred == FunPred(theory.str_replaceallre) ||
+    currentElem._4.pred == FunPred(theory.str_replaceall)
   }
 
-  def getCutOrder(goal: Goal): Seq[(PreOp, Seq[Option[Term]], Term, Atom)] = {
-    val orderOfRemoval = ArrayBuffer[(PreOp, Seq[Option[Term]], Term, Atom)]()
+  def getCutOrder(goal : Goal) : Seq[FunAppTuple] = {
+    val orderOfRemoval = ArrayBuffer[FunAppTuple]()
     // Get initial function applications
     val initialFunApps = getFunApps(goal)
     val funApps = ArrayBuffer(initialFunApps: _*) // Make a mutable copy

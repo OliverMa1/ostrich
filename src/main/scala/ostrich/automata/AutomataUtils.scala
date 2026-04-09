@@ -553,7 +553,7 @@ object AutomataUtils {
         states : Iterable[(A#State, A#State)]) : AtomicStateAutomaton = {
     val builder = aut.getBuilder
     val smap : Map[A#State, aut.State] =
-      aut.states.map(s => (s -> builder.getNewState))(collection.breakOut)
+      aut.states.view.map(s => (s -> builder.getNewState)).toMap
 
     for ((s1, lbl, s2) <- aut.transitions)
       for (newLbl <- aut.LabelOps.subtractLetter(a, lbl))
@@ -578,7 +578,7 @@ object AutomataUtils {
     val builder = aut.getBuilder
 
     val smap : Map[aut.State, aut.State] =
-      aut.states.map(s => (s -> builder.getNewState))(collection.breakOut)
+      aut.states.view.map(s => (s -> builder.getNewState)).toMap
 
     val initState = builder.initialState
     builder.setAccept(smap(aut.initialState), true)
@@ -602,9 +602,9 @@ object AutomataUtils {
     val builder = aut1.getBuilder
 
     val smap1 : Map[aut1.State, aut1.State] =
-      aut1.states.map(s => (s -> builder.getNewState))(collection.breakOut)
+      aut1.states.view.map(s => (s -> builder.getNewState)).toMap
     val smap2 : Map[aut2.State, aut1.State] =
-      aut2.states.map(s => (s -> builder.getNewState))(collection.breakOut)
+      aut2.states.view.map(s => (s -> builder.getNewState)).toMap
 
     builder.setInitialState(smap1(aut1.initialState))
     for (sf <- aut2.acceptingStates)
@@ -645,9 +645,9 @@ object AutomataUtils {
     val builder = autOuter.getBuilder
 
     val smapOuter : Map[autOuter.State, autOuter.State] =
-      autOuter.states.map(s => (s -> builder.getNewState))(collection.breakOut)
+      autOuter.states.view.map(s => (s -> builder.getNewState)).toMap
     val smapInner : Map[autInner.State, autOuter.State] =
-      autInner.states.map(s => (s -> builder.getNewState))(collection.breakOut)
+      autInner.states.view.map(s => (s -> builder.getNewState)).toMap
 
     val innerInit = smapInner(autInner.initialState)
     val innerFinal = autInner.acceptingStates.map(smapInner)

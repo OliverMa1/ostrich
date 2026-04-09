@@ -104,8 +104,12 @@ class BackwardsSaturation(
       applicationPointCacheLock,
       propagationCacheKey(goal)
     ) {
-      val computedPoints = computeApplicationPoints(goal, getInitialConstraints(goal))
-      CachedApplicationPoints(computedPoints, computedPoints.toSet)
+      val computedPoints =
+        computeApplicationPoints(goal, getInitialConstraints(goal))
+      CachedApplicationPoints(
+        computedPoints,
+        computedPoints.toSet
+      )
     }
   }
 
