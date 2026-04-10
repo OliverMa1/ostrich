@@ -43,7 +43,11 @@ import ap.terfor.conjunctions.Conjunction
 import ap.terfor.linearcombination.LinearCombination
 import ap.terfor.preds.Atom
 
-import scala.collection.mutable.{ArrayBuffer, HashMap => MHashMap, HashSet => MHashSet}
+import scala.collection.mutable.{
+  ArrayBuffer,
+  HashMap => MHashMap,
+  HashSet => MHashSet
+}
 
 class OstrichPeriodicRewriter(goal : Goal,
                               theory : OstrichStringTheory) {
@@ -76,7 +80,9 @@ class OstrichPeriodicRewriter(goal : Goal,
 
   private def rewriteNegContains(lit : Atom) : Seq[Plugin.Action] = {
     val builder = new FormulaBuilder(goal, theory)
-    builder.addConjunct(builder.lengthOfTerm(lit(0)) < builder.lengthOfTerm(lit(1)))
+    builder.addConjunct(
+      builder.lengthOfTerm(lit(0)) < builder.lengthOfTerm(lit(1))
+    )
 
     List(
       Plugin.RemoveFacts(!conj(lit)),
@@ -92,7 +98,9 @@ class OstrichPeriodicRewriter(goal : Goal,
 
   private def rewriteNegPrefix(lit : Atom) : Seq[Plugin.Action] = {
     val builder = new FormulaBuilder(goal, theory)
-    builder.addConjunct(builder.lengthOfTerm(lit(0)) > builder.lengthOfTerm(lit(1)))
+    builder.addConjunct(
+      builder.lengthOfTerm(lit(0)) > builder.lengthOfTerm(lit(1))
+    )
 
     List(
       Plugin.RemoveFacts(!conj(lit)),
@@ -108,7 +116,9 @@ class OstrichPeriodicRewriter(goal : Goal,
 
   private def rewriteNegSuffix(lit : Atom) : Seq[Plugin.Action] = {
     val builder = new FormulaBuilder(goal, theory)
-    builder.addConjunct(builder.lengthOfTerm(lit(0)) > builder.lengthOfTerm(lit(1)))
+    builder.addConjunct(
+      builder.lengthOfTerm(lit(0)) > builder.lengthOfTerm(lit(1))
+    )
 
     List(
       Plugin.RemoveFacts(!conj(lit)),
@@ -128,7 +138,9 @@ class OstrichPeriodicRewriter(goal : Goal,
                                  right : Term) : Seq[Plugin.Action] = {
     val disequality = conj(lc =/= 0)
     val builder = new FormulaBuilder(goal, theory)
-    builder.addConjunct(builder.lengthOfTerm(left) =/= builder.lengthOfTerm(right))
+    builder.addConjunct(
+      builder.lengthOfTerm(left) =/= builder.lengthOfTerm(right)
+    )
 
     List(
       Plugin.RemoveFacts(disequality),
