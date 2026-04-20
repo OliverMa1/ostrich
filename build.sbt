@@ -58,6 +58,14 @@ lazy val commonSettings = Seq(
   publishTo := Some(Resolver.file("file",  new File( "/home/wv/public_html/maven/" )) )
 )
 
+def staticNativeImageBuildEnabled: Boolean =
+  sys.env
+    .get("OSTRICH_STATIC_NATIVE_IMAGE")
+    .exists(_.equalsIgnoreCase("true")) ||
+    sys.props
+      .get("ostrich.staticNativeImage")
+      .exists(_.equalsIgnoreCase("true"))
+
 lazy val parserSettings = Seq(
 //    publishArtifact in packageDoc := false,
 //    publishArtifact in packageSrc := false,
@@ -98,7 +106,11 @@ lazy val root = (project in file("."))
     nativeImageOptions ++= Seq(
       "--no-fallback",
       "-H:+ReportExceptionStackTraces"
-    ),
+    ) ++
+      (if (staticNativeImageBuildEnabled)
+         Seq("--static", "--libc=musl")
+       else
+         Seq.empty),
 
     nativeImageAgentMerge := true
   )
