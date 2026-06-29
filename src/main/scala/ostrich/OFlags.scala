@@ -67,6 +67,9 @@ case class OFlags(
   nielsenSplitter         : Boolean = true,
   regexTranslator         : OFlags.RegexTranslator.Value =
                               OFlags.RegexTranslator.Hybrid,
+  cutTrace                : Boolean = false,
+  cutTraceLimit           : Int = 10,
+  experimentalCutPicker   : Boolean = false,
 
   // Options for the cost-enriched-automata solver
   ceaBackend              : OFlags.CEABackend.Value = OFlags.CEABackend.Unary,

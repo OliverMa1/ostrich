@@ -70,7 +70,9 @@ class OstrichStringTheoryBuilder extends StringTheoryBuilder {
   def setAlphabetSize(w : Int) : Unit = ()
 
   protected var eager, forwardPropagation, minimizeAuts, useParikh = false
+  protected var cutTrace, experimentalCutPicker = false
   protected var backwardPropagation, nielsenSplitter = true
+  protected var cutTraceLimit = 10
 
   protected var useLen : OFlags.LengthOptions.Value = OFlags.LengthOptions.Auto
   protected var regexTrans : OFlags.RegexTranslator.Value = OFlags.RegexTranslator.Hybrid
@@ -100,6 +102,12 @@ class OstrichStringTheoryBuilder extends StringTheoryBuilder {
       regexTrans = OFlags.RegexTranslator.Complete
     case CmdlParser.ValueOpt("regexTranslator", "hybrid") =>
       regexTrans = OFlags.RegexTranslator.Hybrid
+    case CmdlParser.Opt("cutTrace", value) =>
+      cutTrace = value
+    case CmdlParser.ValueOpt("cutTraceLimit", value) =>
+      cutTraceLimit = value.toInt max 0
+    case CmdlParser.Opt("experimentalCutPicker", value) =>
+      experimentalCutPicker = value
     case str =>
       super.parseParameter(str)
   }
@@ -140,7 +148,10 @@ class OstrichStringTheoryBuilder extends StringTheoryBuilder {
                                     backwardPropagation     = backwardPropagation,
                                     nielsenSplitter         = nielsenSplitter,
                                     minimizeAutomata        = minimizeAuts,
-                                    regexTranslator         = regexTrans))
+                                    regexTranslator         = regexTrans,
+                                    cutTrace                = cutTrace,
+                                    cutTraceLimit           = cutTraceLimit,
+                                    experimentalCutPicker   = experimentalCutPicker))
   }
 
 }
