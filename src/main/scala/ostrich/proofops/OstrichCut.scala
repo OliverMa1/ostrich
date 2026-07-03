@@ -87,6 +87,8 @@ class OstrichCut(val theory : OstrichStringTheory)
   private lazy val cutTracePrinter = new CutTracePrinter
   private val MaxTraceAutomatonRegexChars = 4000
 
+  private val llmUtils = new LLMUtils()
+
   def handleGoal(goal : Goal, cutEverything : Boolean) : Seq[Plugin.Action] = {
     assert(cutEverything, "selective cuts not finalized yet")
     val stringVariables =
@@ -103,8 +105,8 @@ class OstrichCut(val theory : OstrichStringTheory)
         else
           CutProposal(rand.pick(stringVariables), None, "legacy-random")
 
-      if (theoryFlags.cutTrace)
-        cutTracePrinter.printPreCutGoal(goal, stringVariables, Some(proposal))
+      //if (theoryFlags.cutTrace)
+      // Console.err.println(cutTracePrinter.preCutGoalToString(goal, stringVariables, Some(proposal)))
 
       cutForProposal(goal, proposal)
     } else {
@@ -118,6 +120,60 @@ class OstrichCut(val theory : OstrichStringTheory)
   ) : Option[CutProposal] = {
     // Collaborator hook: inspect the saturated goal, dependencies, regex
     // domains, length facts, etc., then return Some(CutProposal(...)).
+    //goal
+    //CutProposal(
+      //variable = someStringVariable,
+      //preferredWord = Some(Seq('V'.toInt)),
+      //method = "my-picker",
+      //details = "short diagnostic note"
+    //)
+
+    val prompt : String = llmUtils.generatePrompt(cutTracePrinter.preCutGoalForPromptToString(goal, stringVariables))
+    val response : String = llmUtils.promptLLM(prompt)
+    println(response)
+    val parsed = parseLLMResponse(response, stringVariables)
+
+    // Just some printing for now
+    parsed match {
+      case Some(x) =>
+        print(x._1)
+        print("=")
+        print(x._2)
+        println()
+      case None => None
+    }
+
+    parsed match {
+      case Some(x) =>
+        Some(
+          CutProposal(
+          variable = x._1,
+          preferredWord = x._2,
+          method = "LLM based suggestion",
+          details = "short diagnostic note"
+        ))
+      case None => None
+    }
+  }
+
+  private def parseLLMResponse(str: String, stringVariables : IndexedSeq[ConstantTerm]) : Option[(ConstantTerm, Option[Seq[Int]])]  = {
+    val lines = str.trim.split("\n", 2)
+    if (lines.length == 2) {
+      val name = lines(0).trim
+      val quoted = lines(1).trim
+
+      if (quoted.length >= 2 &&
+        quoted.head == '"' &&
+        quoted.last == '"') {
+
+        val chars = quoted.substring(1, quoted.length - 1).map(_.toInt)
+        for (variable <- stringVariables) {
+          if (variable.name == name) {
+            return Some(variable, Some(chars))
+          }
+        }
+      }
+    }
     None
   }
 
@@ -503,14 +559,39 @@ class OstrichCut(val theory : OstrichStringTheory)
     private var preCutCount = 0
     private val MaxIntersectedSummaryConstraints = 8
 
-    def printPreCutGoal(
-      goal : Goal,
-      stringVariables : IndexedSeq[ConstantTerm],
-      proposal : Option[CutProposal]
-    ) : Unit = this.synchronized {
+    def preCutGoalForPromptToString(goal: Goal,
+                                    stringVariables: IndexedSeq[ConstantTerm]) : String = this.synchronized {
       if (theoryFlags.cutTraceLimit <= 0 ||
-          preCutCount >= theoryFlags.cutTraceLimit)
-        return
+        preCutCount >= theoryFlags.cutTraceLimit)
+        return ""
+
+      preCutCount = preCutCount + 1
+
+      val out = new StringBuilder
+      out.append("=== OstrichCut pre-cut goal #")
+      out.append(preCutCount)
+      out.append(" BEGIN ===\n")
+
+      appendArithmeticConstraints(out, goal)
+      appendStringAndFunctionConstraints(out, goal)
+      appendRegularConstraints(out, goal)
+      appendCutVariables(out, stringVariables)
+
+      out.append("=== OstrichCut pre-cut goal #")
+      out.append(preCutCount)
+      out.append(" END ===\n")
+
+      out.toString
+    }
+
+    def preCutGoalToString(
+                            goal: Goal,
+                            stringVariables: IndexedSeq[ConstantTerm],
+                            proposal: Option[CutProposal]
+                          ): String = this.synchronized {
+      if (theoryFlags.cutTraceLimit <= 0 ||
+        preCutCount >= theoryFlags.cutTraceLimit)
+        return ""
 
       preCutCount = preCutCount + 1
 
@@ -530,7 +611,7 @@ class OstrichCut(val theory : OstrichStringTheory)
       out.append(preCutCount)
       out.append(" END ===\n")
 
-      Console.err.print(out.toString)
+      out.toString
     }
 
     private def appendArithmeticConstraints(out : StringBuilder,

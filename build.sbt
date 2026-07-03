@@ -100,6 +100,11 @@ lazy val root = (project in file("."))
     libraryDependencies += "dk.brics.automaton" % "automaton" % "1.11-8",
     libraryDependencies += "com.lihaoyi" %% "fastparse" % "3.0.2",
 
+    // libraries for LLM (ollama) calls
+    libraryDependencies +=   "com.squareup.okhttp3" % "okhttp" % "3.14.9",
+    libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.12",
+    libraryDependencies += "org.apache.commons" % "commons-text" % "1.11.0",
+
     nativeImageInstalled := true,
     // point to your GraalVM (recommended via env var)
     //nativeImageGraalHome := file(sys.env("GRAALVM_HOME")).toPath,

@@ -57,9 +57,9 @@ object OstrichMain {
 
   PortfolioSetup
 
-  def main(args: Array[String]) : Unit =
+  def main(args: Array[String]) : Unit = {
     ap.CmdlMain.main((options ++ args).toArray)
-
+  }
 }
 
 object PortfolioSetup {
